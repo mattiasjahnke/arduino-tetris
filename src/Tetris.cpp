@@ -73,6 +73,9 @@ void setup() {
   playDeathAnimation();
   spawnNewShape();
 
+  // NOTE: For some reason, if I omit this line, the game will restart
+  // every time a shape (except for "I") hits the floor.
+  // If anyone could tell me why, that'd be great...
   Serial.begin(9600);
 }
 
@@ -276,6 +279,9 @@ void moveRightIfPossible() {
 }
 
 // --- Shape functions ----
+
+// TODO: Would be great if I could refactor these functions into something
+// a little more generic.
 
 // Find leftmost active bit in shape
 int leftOffsetPositionForShape(word shape) {
