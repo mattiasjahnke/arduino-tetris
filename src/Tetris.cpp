@@ -1,40 +1,48 @@
 #include <Arduino.h>
 #include "LEDMatrix.cpp"
+#include "Button.cpp"
 #include <TM1637Display.h>
 
 #define DATA_PIN 2
 #define LOAD_PIN 3
 #define CLOCK_PIN 4
 
-#define LEFT_BUTTON_PIN 9
 #define RIGHT_BUTTON_PIN 8
+#define LEFT_BUTTON_PIN 9
 #define ROTATE_BUTTON_PIN 10
 #define SLAM_BUTTON_PIN 11
 
+// Game
 void spawnNewShape();
-void renderGrid(byte *grid);
-void moveLeftIfPossible();
-void moveRightIfPossible();
-int leftOffsetPositionForShape(word shape);
-int rightOffsetPositionForShape(word shape);
-void renderShapeInArray(byte *original, byte *destination, word shape, int x, int y);
-bool collides(byte *grid, word shape, int x, int y);
-int removeFullLines(byte *grid);
-void shiftLinesDown(byte *grid, int toIndex);
-int bottomOffsetPositionForShape(word shape);
 void playDeathAnimation();
 void setupNewGame();
 
-byte currentGrid[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+// Matrix functions
+void renderMatrix(byte *matrix);
+void renderShapeInMatrix(byte *original, byte *destination, word shape, int x, int y);
+bool collides(byte *matrix, word shape, int x, int y);
+
+// Shape functions
+int leftOffsetPositionForShape(word shape);
+int rightOffsetPositionForShape(word shape);
+int bottomOffsetPositionForShape(word shape);
+
+// Actions
+void moveLeftIfPossible();
+void moveRightIfPossible();
+int removeFullLines(byte *matrix);
+void shiftLinesDown(byte *matrix, int toIndex);
+
+byte currentMatrix[16] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 word shapes[7][4] = {{0xCC00, 0xCC00, 0xCC00, 0xCC00}, // O
                     {0x4444, 0x0F00, 0x2222, 0x0F00}, // I
-                    {0x4E00, 0x4C40, 0x0E40, 0x4640}, // J
+                    {0x4E00, 0x4640, 0x0E40, 0x4C40}, // T
                     {0x4460, 0x0E80, 0xC440, 0x2E00}, // L
-                    {0x44C0, 0x8E00, 0x6440, 0x0E20}, // T
-                    {0x8C40, 0xC600, 0x8C40, 0xC600}, // S
-                    {0x8C40, 0x6C00, 0x8C40, 0x6C00}}; // Z
+                    {0x44C0, 0x8E00, 0x6440, 0x0E20}, // J
+                    {0x4C80, 0xC600, 0x4C80, 0xC600}, // Z
+                    {0x8C40, 0x6C00, 0x8C40, 0x6C00}}; // S
 
 word currentShape;
 int currentShapeIndex = 0;
@@ -43,75 +51,58 @@ int currentY = 0;
 int currentRotation = 0;
 int score = 0;
 
-int previousLeftButtonState = LOW;
-int previousRightButtonState = LOW;
 int previousRotateButtonState = LOW;
 int previousSlamButtonState = LOW;
 
 unsigned long previousMillis = 0;
 long gameInterval = 250;
 
-LEDMatrix matrix(2, CLOCK_PIN, DATA_PIN, LOAD_PIN);
+LEDMatrix ledMatrix(2, CLOCK_PIN, DATA_PIN, LOAD_PIN);
 TM1637Display display(12, 13);
+
+Button rightButton(RIGHT_BUTTON_PIN);
+Button leftButton(LEFT_BUTTON_PIN);
+Button rotateButton(ROTATE_BUTTON_PIN);
+Button slamButton(SLAM_BUTTON_PIN);
 
 void setup() {
   randomSeed(analogRead(0));
-
   display.setBrightness(0x0f);
+
   setupNewGame();
   playDeathAnimation();
-
-  // Buttons
-  pinMode(LEFT_BUTTON_PIN, INPUT);
-  pinMode(RIGHT_BUTTON_PIN, INPUT);
-  pinMode(ROTATE_BUTTON_PIN, INPUT);
-  pinMode(SLAM_BUTTON_PIN, INPUT);
+  spawnNewShape();
 
   Serial.begin(9600);
-
-  spawnNewShape();
 }
 
 void loop() {
-  byte grid[16];
-  renderShapeInArray(currentGrid, grid, currentShape, currentX, currentY);
-  renderGrid(grid);
+  byte matrix[16];
+  renderShapeInMatrix(currentMatrix, matrix, currentShape, currentX, currentY);
+  renderMatrix(matrix);
 
-  // Refactor button handling
-  int leftButtonState = digitalRead(LEFT_BUTTON_PIN);
-  if (leftButtonState != previousLeftButtonState) {
-    if (leftButtonState == HIGH) {
-      moveLeftIfPossible();
-    }
-    previousLeftButtonState = leftButtonState;
+  if (leftButton.exlusivePressed()) {
+    moveLeftIfPossible();
   }
 
-  int rightButtonState = digitalRead(RIGHT_BUTTON_PIN);
-  if (rightButtonState != previousRightButtonState) {
-    if (rightButtonState == HIGH) {
-      moveRightIfPossible();
-    }
-    previousRightButtonState = rightButtonState;
+  if (rightButton.exlusivePressed()) {
+    moveRightIfPossible();
   }
 
-  int rotateButtonState = digitalRead(ROTATE_BUTTON_PIN);
-  if (rotateButtonState != previousRotateButtonState) {
-    if (rotateButtonState == HIGH) {
-      if (++currentRotation > 3) {
-        currentRotation = 0;
-      }
-      currentShape = shapes[currentShapeIndex][currentRotation];
+  if (rotateButton.exlusivePressed()) {
+    int nextRotation = currentRotation + 1;
+    if (nextRotation > 3) {
+      nextRotation = 0;
     }
-    previousRotateButtonState = rotateButtonState;
+    word nextShape = shapes[currentShapeIndex][nextRotation];
+    if (!collides(currentMatrix, nextShape, currentX, currentY)) {
+      currentRotation = nextRotation;
+      currentShape = nextShape;
+    }
   }
 
-  bool iterations = 1;
-  int slamButtonState = digitalRead(SLAM_BUTTON_PIN);
-  if (slamButtonState != previousSlamButtonState) {
-    if (slamButtonState == HIGH) {
-      iterations = 16;
-    }
-    previousSlamButtonState = slamButtonState;
+  if (slamButton.exlusivePressed()) {
+    // TODO: Implement slamming
   }
 
   // Increment currentY with given intervals
@@ -120,7 +111,7 @@ void loop() {
     previousMillis = currentMillis;
 
     int bottomOffset = bottomOffsetPositionForShape(currentShape);
-    if (collides(currentGrid, currentShape, currentX, currentY + 1) || currentY + 4 - bottomOffset > 15) {
+    if (collides(currentMatrix, currentShape, currentX, currentY + 1) || currentY + 4 - bottomOffset > 15) {
 
       // Check for game over
       if (currentY < 0) {
@@ -129,9 +120,9 @@ void loop() {
         return;
       }
 
-      renderShapeInArray(currentGrid, currentGrid, currentShape, currentX, currentY);
+      renderShapeInMatrix(currentMatrix, currentMatrix, currentShape, currentX, currentY);
       spawnNewShape();
-      int linesRemoved = removeFullLines(currentGrid);
+      int linesRemoved = removeFullLines(currentMatrix);
       score += linesRemoved;
 
       // Increase the game speed
@@ -144,25 +135,7 @@ void loop() {
   }
 }
 
-// Returns the numer of lines removed
-int removeFullLines(byte *grid) {
-  int res = 0;
-  for (int i = 0; i < 16; i++) {
-    if (grid[i] == 0xff) { // Full line
-      grid[i] = 0x0;
-      shiftLinesDown(grid, i);
-      res++;
-    }
-  }
-  return res;
-}
-
-void shiftLinesDown(byte *grid, int toIndex) {
-  grid[0] = 0x0;
-  for (int i = toIndex; i > 0; i--) {
-    grid[i] = grid[i - 1];
-  }
-}
+// ---- Game functions ----
 
 void setupNewGame() {
   currentShapeIndex = 0;
@@ -172,32 +145,61 @@ void setupNewGame() {
   score = 0;
   gameInterval = 250;
   for (int i = 0; i < 16; i++) {
-    currentGrid[i] = 0x0;
+    currentMatrix[i] = 0x0;
   }
   display.showNumberDec(score);
   spawnNewShape();
 }
 
+void spawnNewShape() {
+  currentShapeIndex = random(7);
+  currentShape = shapes[currentShapeIndex][currentRotation];
+  currentY = -4;
+  currentX = 3;
+}
+
 void playDeathAnimation() {
   for (int i = 0; i < 16; i++) {
     if (i < 8) {
-      matrix.WriteOne(1, i + 1, 0xff);
+      ledMatrix.WriteOne(1, i + 1, 0xff);
     } else {
-      matrix.WriteOne(2, i + 1 - 8, 0xff);
+      ledMatrix.WriteOne(2, i + 1 - 8, 0xff);
     }
     delay(75);
   }
   for (int i = 0; i < 16; i++) {
     if (i < 8) {
-      matrix.WriteOne(1, i + 1, 0x00);
+      ledMatrix.WriteOne(1, i + 1, 0x00);
     } else {
-      matrix.WriteOne(2, i + 1 - 8, 0x00);
+      ledMatrix.WriteOne(2, i + 1 - 8, 0x00);
     }
     delay(75);
   }
 }
 
-bool collides(byte *grid, word shape, int x, int y) {
+// ---- Matrix functions ----
+
+// Returns the numer of lines removed
+int removeFullLines(byte *matrix) {
+  int res = 0;
+  for (int i = 0; i < 16; i++) {
+    if (matrix[i] == 0xff) { // Full line
+      matrix[i] = 0x0;
+      shiftLinesDown(matrix, i);
+      res++;
+    }
+  }
+  return res;
+}
+
+void shiftLinesDown(byte *matrix, int toIndex) {
+  matrix[0] = 0x0;
+  for (int i = toIndex; i > 0; i--) {
+    matrix[i] = matrix[i - 1];
+  }
+}
+
+bool collides(byte *matrix, word shape, int x, int y) {
   for (int i = 0; i < 4; i++) {
     if (y + i < 0) { continue; }
     int shift = (3 - i) * 4;
@@ -210,7 +212,7 @@ bool collides(byte *grid, word shape, int x, int y) {
     // Move to right according to x and offset
     rowsValue = rowsValue >> (x + lOffset);
 
-    if ((grid[y + i] & rowsValue) > 0) {
+    if ((matrix[y + i] & rowsValue) > 0) {
       return true;
     }
   }
@@ -218,29 +220,64 @@ bool collides(byte *grid, word shape, int x, int y) {
   return false;
 }
 
+void renderMatrix(byte *matrix) {
+  for (int i = 0; i < 16; i++) {
+    if (i < 8) {
+      ledMatrix.WriteOne(1, i + 1, matrix[i]);
+    } else {
+      ledMatrix.WriteOne(2, i + 1 - 8, matrix[i]);
+    }
+  }
+}
+
+// Render a shape in a Matrix
+void renderShapeInMatrix(byte *original, byte *destination, word shape, int x, int y) {
+  for (int i = 0; i < 16; i++) {
+    destination[i] = original[i];
+  }
+
+  for (int i = 0; i < 4; i++) {
+    if (y + i < 0) { // Allow for negative Y (to render half a shape)
+      continue;
+    }
+
+    int shift = (3 - i) * 4;
+    byte rowsValue = (shape & (0xf << shift)) >> shift;
+
+    // Move to left hand side
+    int lOffset = leftOffsetPositionForShape(shape);
+    rowsValue = rowsValue << (4 + lOffset);
+
+    // Move to right according to x and offset
+    rowsValue = rowsValue >> (x + lOffset);
+
+    destination[y + i] = original[y + i] | rowsValue;
+  }
+}
+
+// --- Actions ----
+
 void moveLeftIfPossible() {
-  // Check to see that it's possible to go in direction
-  // Find leftmost active bit in shape
   // Check that currentX + bitIndex - 1 >= 0
     int offset = leftOffsetPositionForShape(currentShape);
-    bool wouldCollide = collides(currentGrid, currentShape, currentX - 1, currentY);
+    bool wouldCollide = collides(currentMatrix, currentShape, currentX - 1, currentY);
     if (currentX + offset - 1 >= 0 && !wouldCollide) {
         currentX--;
     }
 }
 
 void moveRightIfPossible() {
-  // Check to see that it's possible to go in direction
-  // Find rightmost active bit in shape
   // Check that currentX + bitIndex + 1 < board_width (8)
   int offset = rightOffsetPositionForShape(currentShape);
-  bool wouldCollide = collides(currentGrid, currentShape, currentX + 1, currentY);
+  bool wouldCollide = collides(currentMatrix, currentShape, currentX + 1, currentY);
   if (currentX + (4 - offset) < 8 && !wouldCollide) {
         currentX++;
     }
 }
 
-// TODO refactor
+// --- Shape functions ----
+
+// Find leftmost active bit in shape
 int leftOffsetPositionForShape(word shape) {
   int offset = 4;
   for (int i = 0; i < 4; i++) {
@@ -258,10 +295,10 @@ int leftOffsetPositionForShape(word shape) {
   return offset;
 }
 
-// TODO refactor
+// Find rightmost active bit in shape
 int rightOffsetPositionForShape(word shape) {
   int offset = 4;
-  for (int i = 0; i < 4; i++) { // Does this need to be other way?
+  for (int i = 0; i < 4; i++) {
     int shift = (3 - i) * 4;
     byte rowsValue = (shape & (0xf << shift)) >> shift;
     byte test = 1;
@@ -276,6 +313,7 @@ int rightOffsetPositionForShape(word shape) {
   return offset;
 }
 
+// Find offset for bottom active bit in shape
 int bottomOffsetPositionForShape(word shape) {
   for (int i = 3; i >= 0; i--) {
     int shift = (3 - i) * 4;
@@ -284,48 +322,4 @@ int bottomOffsetPositionForShape(word shape) {
       return 3 - i;
     }
   }
-}
-
-void renderGrid(byte *grid) {
-  for (int i = 0; i < 16; i++) {
-    if (i < 8) {
-      matrix.WriteOne(1, i + 1, grid[i]);
-    } else {
-      matrix.WriteOne(2, i + 1 - 8, grid[i]);
-    }
-  }
-}
-
-void renderShapeInArray(byte *original, byte *destination, word shape, int x, int y) {
-  for (int i = 0; i < 16; i++) {
-    destination[i] = original[i];
-  }
-
-  for (int i = 0; i < 4; i++) {
-
-    // Allow for negative Y (to render half a shape)
-    if (y + i < 0) {
-      continue;
-    }
-
-    int shift = (3 - i) * 4;
-
-    byte rowsValue = (shape & (0xf << shift)) >> shift;
-
-    // Move to left hand side
-    int lOffset = leftOffsetPositionForShape(shape);
-    rowsValue = rowsValue << (4 + lOffset);
-
-    // Move to right according to x and offset
-    rowsValue = rowsValue >> (x + lOffset);
-
-    destination[y + i] = original[y + i] | rowsValue;
-  }
-}
-
-void spawnNewShape() {
-  currentShapeIndex = random(6);
-  currentShape = shapes[currentShapeIndex][currentRotation];
-  currentY = -4;
-  currentX = 3;
 }
