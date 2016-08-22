@@ -1,2 +1,3 @@
-# arduino-tetris
-Matrices, matrices everywhere
+# Arduino Tetris
+
+I'll add schematics and material list soon!
