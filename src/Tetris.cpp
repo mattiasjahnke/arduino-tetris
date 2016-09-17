@@ -3,14 +3,14 @@
 #include "Button.cpp"
 #include <TM1637Display.h>
 
-#define DATA_PIN 2
+#define DATA_PIN 5
 #define LOAD_PIN 3
 #define CLOCK_PIN 4
 
 #define RIGHT_BUTTON_PIN 8
 #define LEFT_BUTTON_PIN 9
 #define ROTATE_BUTTON_PIN 10
-#define SLAM_BUTTON_PIN 11
+#define SLAM_BUTTON_PIN 7
 
 // Game
 void spawnNewShape();
@@ -105,7 +105,11 @@ void loop() {
   }
 
   if (slamButton.exlusivePressed()) {
-    // TODO: Implement slamming
+    int bottomOffset = bottomOffsetPositionForShape(currentShape);
+    while (!collides(currentMatrix, currentShape, currentX, currentY + 1) && currentY + 4 - bottomOffset <= 15) {
+      currentY++;
+    }
+    currentY--;
   }
 
   // Increment currentY with given intervals
